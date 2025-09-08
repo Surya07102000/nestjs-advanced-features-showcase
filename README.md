@@ -54,10 +54,14 @@ src/
    npm install
    ```
 
-2. **Set environment variables:**
-   ```bash
-   export JWT_SECRET=your-secret-key
-   ```
+2. **Create .env from template and set secrets:**
+   - Copy: `cp env.example .env` (PowerShell: `copy env.example .env`)
+   - Edit `.env` and set strong values:
+     - `JWT_SECRET`: 64+ chars
+     - `COOKIE_SECRET`: 32+ chars
+     - `CORS_ORIGIN`: frontend origin(s), comma-separated if multiple
+     - `PORT`: default 3000 (change if port is busy)
+     - `RATE_LIMIT_TTL`, `RATE_LIMIT_MAX`: adjust to your needs
 
 3. **Run the application:**
    ```bash
@@ -121,6 +125,28 @@ getUserProfile(@Param('id') id: string) {
 ```
 
 ### Public Routes
+### CSRF, CORS, Helmet, and Rate Limiting
+- **Helmet**: Enabled globally for secure HTTP headers (CSP disabled by default; adjust per UI needs)
+- **CORS**: Environment-driven origins and credentials
+- **CSRF Protection**: Double-submit cookie using `csurf` with cookie `XSRF-TOKEN` and header `X-XSRF-TOKEN`
+- **Rate Limiting**: Global `@nestjs/throttler` guard configured via env
+
+Environment variables (see `env.example`):
+```
+CORS_ORIGIN=http://localhost:3000
+CORS_CREDENTIALS=true
+COOKIE_SECRET=change-this-cookie-secret
+CSRF_COOKIE_NAME=XSRF-TOKEN
+CSRF_HEADER_NAME=X-XSRF-TOKEN
+RATE_LIMIT_TTL=60
+RATE_LIMIT_MAX=100
+```
+
+Client flow for CSRF (cookie-based browsers):
+1. Make a GET request to any endpoint to receive the CSRF cookie
+2. Read `XSRF-TOKEN` cookie in the client
+3. Send it back in header `X-XSRF-TOKEN` for state-changing requests
+
 ```typescript
 @Public()
 @Post('register')
