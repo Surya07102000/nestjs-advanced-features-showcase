@@ -1,0 +1,585 @@
+openapi: 3.0.3
+info:
+  title: NestJS Advanced Features API
+  description: |
+    A comprehensive demonstration of NestJS advanced concepts including:
+    - Custom Decorators (@CurrentUser, @Roles, @Public, @RequestMetadata)
+    - Advanced Guards (JWT, Roles, Ownership)
+    - Exception Filters (Global, Validation)
+    - Role-based Access Control
+    - User Management System
+    
+    ## Authentication
+    Most endpoints require JWT authentication. Use the `/auth/login` endpoint to get a token, then include it in the Authorization header as `Bearer <token>`.
+    
+    ## User Roles
+    - **admin**: Full access to all endpoints
+    - **moderator**: Can view all users
+    - **user**: Can only access own resources
+    
+    ## Pre-configured Test Users
+    - **Admin**: `admin@example.com` / `password123`
+    - **User**: `user@example.com` / `password123`
+  version: 1.0.0
+  contact:
+    name: NestJS Advanced Features Demo
+    email: developer@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Users
+    description: User management operations
+  - name: Health
+    description: Application health check
+
+paths:
+  /:
+    get:
+      tags:
+        - Health
+      summary: Get application info
+      description: Returns basic information about the application
+      operationId: getAppInfo
+      responses:
+        '200':
+          description: Application information
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "NestJS Advanced Features Demo - User Management System"
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and receive JWT token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              admin_login:
+                summary: Admin user login
+                value:
+                  email: "admin@example.com"
+                  password: "password123"
+              user_login:
+                summary: Regular user login
+                value:
+                  email: "user@example.com"
+                  password: "password123"
+              invalid_credentials:
+                summary: Invalid credentials (for testing)
+                value:
+                  email: "wrong@example.com"
+                  password: "wrongpassword"
+      responses:
+        '201':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users:
+    post:
+      tags:
+        - Users
+      summary: Create new user
+      description: Register a new user (public endpoint)
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            examples:
+              new_user:
+                summary: Create new user
+                value:
+                  email: "newuser@example.com"
+                  username: "newuser"
+                  password: "password123"
+                  role: "user"
+              validation_error:
+                summary: Validation error example
+                value:
+                  email: "invalid-email"
+                  username: "ab"
+                  password: "123"
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Users
+      summary: Get all users
+      description: Retrieve all users (admin/moderator only)
+      operationId: getAllUsers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/profile:
+    get:
+      tags:
+        - Users
+      summary: Get current user profile
+      description: Get the profile of the currently authenticated user
+      operationId: getCurrentUserProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      description: Get a specific user by ID (ownership validation - users can only access their own profile, admins can access any)
+      operationId: getUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            example: "1"
+      responses:
+        '200':
+          description: User retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - can only access own resources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Users
+      summary: Update user
+      description: Update user information (ownership validation - users can only update their own profile, admins can update any)
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            example: "1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+            examples:
+              update_username:
+                summary: Update username
+                value:
+                  username: "newusername"
+              update_email:
+                summary: Update email
+                value:
+                  email: "newemail@example.com"
+              update_role:
+                summary: Update role (admin only)
+                value:
+                  role: "moderator"
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - can only update own resources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Users
+      summary: Delete user
+      description: Delete a user (admin only)
+      operationId: deleteUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: string
+            example: "1"
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - admin role required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from the `/auth/login` endpoint.
+        
+        **Example:** `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique user identifier
+          example: "1"
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+        username:
+          type: string
+          description: Username
+          example: "username"
+        role:
+          $ref: '#/components/schemas/UserRole'
+        isActive:
+          type: boolean
+          description: Whether the user account is active
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: User creation timestamp
+          example: "2024-01-01T00:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: User last update timestamp
+          example: "2024-01-01T00:00:00.000Z"
+
+    UserRole:
+      type: string
+      enum: [admin, moderator, user]
+      description: User role with different access levels
+      example: "user"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "admin@example.com"
+        password:
+          type: string
+          minLength: 6
+          description: User password
+          example: "password123"
+
+    CreateUserRequest:
+      type: object
+      required:
+        - email
+        - username
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "newuser@example.com"
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          description: Username
+          example: "newuser"
+        password:
+          type: string
+          minLength: 6
+          description: User password
+          example: "password123"
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "newemail@example.com"
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+          description: Username
+          example: "newusername"
+        role:
+          $ref: '#/components/schemas/UserRole'
+        isActive:
+          type: boolean
+          description: Whether the user account is active
+          example: true
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Login successful"
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+              description: JWT access token
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            user:
+              $ref: '#/components/schemas/User'
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00.000Z"
+        path:
+          type: string
+          example: "/auth/login"
+
+    UserResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "User retrieved successfully"
+        data:
+          $ref: '#/components/schemas/User'
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00.000Z"
+        path:
+          type: string
+          example: "/users/1"
+
+    UsersListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Users retrieved successfully"
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00.000Z"
+        path:
+          type: string
+          example: "/users"
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Operation completed successfully"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00.000Z"
+        path:
+          type: string
+          example: "/users/1"
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          description: HTTP status code
+          example: 400
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Error message or array of validation errors
+          example: "Validation failed"
+        error:
+          type: string
+          description: Error type
+          example: "BadRequestException"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2024-01-01T00:00:00.000Z"
+        path:
+          type: string
+          description: Request path
+          example: "/users"
+
+security:
+  - bearerAuth: []
+
+externalDocs:
+  description: Find more info about NestJS
+  url: https://nestjs.com/
